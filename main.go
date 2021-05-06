@@ -6,214 +6,246 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"strings"
-	"time"
+
+	"database/sql"
+	"fmt"
+
+	"github.com/gorilla/mux"
+
+	"github.com/rs/cors"
+
+	"github.com/lib/pq"
+	_ "github.com/lib/pq"
 )
 
-type Task struct {
-	Id        int       `json:"id,omitempty"`
-	CreatedAt time.Time `json:"createdAt,omitempty"`
-	Height    int       `json:"height,omitempty"`
-	Neck      float32   `json:"neck,omitempty"`
-	Waist     float32   `json:"waist,omitempty"`
-	Hip       float32   `json:"hip,omitempty"`
+type Database struct {
+	ID     int      `json:"id,omitempty"`
+	Dbname string   `json:"dbname,omitempty"`
+	Images []string `json:"images,omitempty"`
 }
 
-var Tasks []Task = []Task{
-	Task{
-		Id:        1,
-		CreatedAt: time.Now(),
-		Height:    198,
-		Neck:      38,
-		Waist:     95,
-		Hip:       0,
-	},
-	Task{
-		Id:        2,
-		CreatedAt: time.Now().Add(time.Hour * 168), /* .Add(time.Hour * 168) */
-		Height:    198,
-		Neck:      39,
-		Waist:     94,
-		Hip:       0,
-	},
-	Task{
-		Id:        3,
-		CreatedAt: time.Now().Add(time.Hour * (168 * 2)),
-		Height:    198,
-		Neck:      39,
-		Waist:     93,
-		Hip:       0,
-	},
-	Task{
-		Id:        4,
-		CreatedAt: time.Now().Add(time.Hour * (168 * 3)),
-		Height:    198,
-		Neck:      39,
-		Waist:     92,
-		Hip:       0,
-	},
-	Task{
-		Id:        5,
-		CreatedAt: time.Now().Add(time.Hour * (168 * 4)),
-		Height:    198,
-		Neck:      40,
-		Waist:     90,
-		Hip:       0,
-	},
-	Task{
-		Id:        6,
-		CreatedAt: time.Now().Add(time.Hour * (168 * 5)),
-		Height:    198,
-		Neck:      38,
-		Waist:     95,
-		Hip:       0,
-	},
-}
+const (
+	host     = "localhost"
+	port     = 3001
+	user     = "docker"
+	password = "docker"
+	dbname   = "docker"
+)
 
-func del(Tasks []Task, index int) []Task {
-	for index < len(Tasks)-1 {
-		Tasks[index] = Tasks[index+1]
-		index++
+var db *sql.DB
+
+func databaseConnection() {
+	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
+		"password=%s dbname=%s sslmode=disable",
+		host, port, user, password, dbname)
+	var err error
+
+	db, err = sql.Open("postgres", psqlInfo)
+
+	if err != nil {
+		panic(err)
 	}
-	Tasks = Tasks[:len(Tasks)-1]
-	return Tasks
+
+	err = db.Ping()
+	if err != nil {
+		panic(err)
+		return
+	}
+	var errorOnCreate error
+
+	_, errorOnCreate = db.Exec(
+		"CREATE TABLE DATABASES (" +
+			"ID serial PRIMARY KEY," +
+			"Dbname VARCHAR ( 50 ) UNIQUE NOT NULL," +
+			"images TEXT []" +
+			");")
+
+	if errorOnCreate != nil {
+		_, errorOnGetRows := db.Query("SELECT ID, Dbname , images  FROM DATABASES")
+
+		if errorOnGetRows != nil {
+			panic(errorOnCreate)
+			return
+		}
+	}
+
+	fmt.Println("Successfully connected!")
 }
 
-func getTask(w http.ResponseWriter, r *http.Request) {
+func getDataBase(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+	fmt.Printf("Rota getAcessada")
+	registers, errorOnGetRows := db.Query("SELECT ID, Dbname , images  FROM DATABASES")
 
-	json.NewEncoder(w).Encode(Tasks)
+	if errorOnGetRows != nil {
+		panic(errorOnGetRows)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	var databases []Database = make([]Database, 0)
+
+	for registers.Next() {
+		var database Database
+		scanErorr := registers.Scan(&database.ID, &database.Dbname, pq.Array(&database.Images))
+		if database.Images == nil {
+			databaseImages := []string{}
+			database.Images = databaseImages
+		}
+		if scanErorr != nil {
+			panic(scanErorr)
+			continue
+		}
+
+		databases = append(databases, database)
+	}
+
+	closeRergistersError := registers.Close()
+
+	if closeRergistersError != nil {
+		panic(closeRergistersError)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Add("Content-Type","text/html")
+	json.NewEncoder(w).Encode(databases)
 }
 
-func postTask(w http.ResponseWriter, r *http.Request) {
-
+func postDataBase(w http.ResponseWriter, r *http.Request) {
 	body, erro := ioutil.ReadAll(r.Body)
-	var new_Task Task
 
 	if erro != nil {
-		return
-
-	} else {
-		w.WriteHeader(http.StatusCreated)
-
-		json.Unmarshal(body, &new_Task)
-		Last_id := Tasks[len(Tasks)-1].Id
-		new_Task.Id = Last_id + 1
-		new_Task.CreatedAt = time.Now().AddDate(0, 0, 7*Last_id)
-		new_Task.Height = 198
-		new_Task.Neck = 40
-		new_Task.Waist = 90
-		new_Task.Hip = 0
-		Tasks = append(Tasks, new_Task)
-
-	}
-
-	json.NewEncoder(w).Encode(new_Task)
-}
-
-func deleteTask(w http.ResponseWriter, r *http.Request, URL_slices []string) {
-
-	index := searchTask(w, r, URL_slices)
-	if index < 0 {
-		w.WriteHeader(http.StatusNoContent)
-	} else {
-		Tasks = del(Tasks, index)
-	}
-}
-
-func putTask(w http.ResponseWriter, r *http.Request, URL_slices []string) {
-	index := searchTask(w, r, URL_slices)
-	if index < 0 {
-		postTask(w, r)
-	} else {
-		body, _ := ioutil.ReadAll(r.Body)
-		var new_Task Task
-		json.Unmarshal(body, &new_Task)
-		new_Task.Id, _ = strconv.Atoi(URL_slices[3])
-		Tasks[index] = new_Task
-		json.NewEncoder(w).Encode(new_Task)
-	}
-}
-
-func searchTask(w http.ResponseWriter, r *http.Request, URL_slices []string) int {
-
-	w.Header().Set("Content-Type", "application/json")
-
-	if len(URL_slices) < 4 {
-
-		w.WriteHeader(http.StatusNoContent)
-		return -1
-	} else if len(URL_slices) == 4 || URL_slices[len(URL_slices)-1] == "" {
-
-		id, _ := strconv.Atoi(URL_slices[3])
-
-		for i := 0; i < len(Tasks); i++ {
-			if Tasks[i].Id == id {
-
-				w.WriteHeader(http.StatusFound)
-				json.NewEncoder(w).Encode(Tasks[i])
-				return i
-
-			}
-		}
-
-		w.WriteHeader(http.StatusNoContent)
-	}
-	return -1
-}
-
-func http_Tasks(w http.ResponseWriter, r *http.Request) {
-
-	w.Header().Set("Content-Type", "application/json")
-
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-
-	if r.Method == "OPTIONS" {
-
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	URL_slices := strings.Split(r.URL.Path, "/")
+	var newDataBase Database
 
-	if len(URL_slices) < 4 || len(URL_slices) == 4 && URL_slices[3] == "" {
+	json.Unmarshal(body, &newDataBase)
+	fmt.Println(fmt.Printf("Array de images = %v", newDataBase.Images))
+	_, execError := db.Exec("INSERT INTO DATABASES (Dbname, images) VALUES ($1, $2);", newDataBase.Dbname, pq.Array(newDataBase.Images))
 
-		if r.Method == "GET" {
-			getTask(w, r)
-
-		} else if r.Method == "POST" {
-			postTask(w, r)
-
-		}
-	} else if len(URL_slices) >= 4 || URL_slices[len(URL_slices)-1] == "" {
-		if r.Method == "GET" {
-			searchTask(w, r, URL_slices)
-
-		} else if r.Method == "DELETE" {
-			deleteTask(w, r, URL_slices)
-
-		} else if r.Method == "PUT" {
-			putTask(w, r, URL_slices)
-		}
-	} else {
-
-		w.WriteHeader(http.StatusNotFound)
+	if execError != nil {
+		panic(execError)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
+	w.WriteHeader(http.StatusCreated)
+
+	json.NewEncoder(w).Encode(newDataBase)
 }
 
-func configureRoutes() {
-	http.HandleFunc("/api/todos/", http_Tasks)
-	http.HandleFunc("/api/todos", http_Tasks)
+func deleteDataBase(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+	id, _ := strconv.Atoi(vars["databaseID"])
+
+	registers := db.QueryRow("SELECT ID FROM DATABASES WHERE ID = $1", id)
+
+	var database Database
+
+	scanErorr := registers.Scan(&database.ID, &database.Dbname, pq.Array(&database.Images))
+
+	w.Header().Add("Content-Type","text/html")   
+	w.Header().Set("Content-Type", "application/json")
+	if scanErorr != nil {
+		panic(scanErorr)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	_, execError := db.Exec("DELETE FROM DATABASES WHERE ID = $1", database.Images, id)
+
+	if execError != nil {
+		panic(execError)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+
+}
+
+func putDataBase(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+	id, _ := strconv.Atoi(vars["databaseID"])
+
+	registers := db.QueryRow("SELECT ID, Dbname , images  FROM DATABASES WHERE ID = $1", id)
+
+	var database Database
+
+	scanErorr := registers.Scan(&database.ID, &database.Dbname, pq.Array(&database.Images))
+
+	w.Header().Add("Content-Type","text/html")
+	w.Header().Set("Content-Type", "application/json")
+	if scanErorr != nil {
+		panic(scanErorr)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	body, _ := ioutil.ReadAll(r.Body)
+	var mdifiedDatabase Database
+
+	json.Unmarshal(body, &mdifiedDatabase)
+
+	_, execError := db.Exec("UPDATE DATABASES SET Dbname = $1, images = $2 WHERE ID = $3", mdifiedDatabase.Dbname, pq.Array(mdifiedDatabase.Images), id)
+	if execError != nil {
+		panic(execError)
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+
+	json.NewEncoder(w).Encode(mdifiedDatabase)
+
+}
+
+func searchDataBase(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+	vars := mux.Vars(r)
+	id, _ := strconv.Atoi(vars["databaseID"])
+
+	registers := db.QueryRow("SELECT ID, Dbname , images  FROM DATABASES WHERE ID = $1", id)
+
+	var database Database
+
+	scanErorr := registers.Scan(&database.ID, &database.Dbname, pq.Array(&database.Images))
+
+	                                         
+	 w.Header().Add("Content-Type","text/html")
+	w.Header().Set("Content-Type", "application/json")
+	
+	if scanErorr != nil {
+		panic(scanErorr)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	w.WriteHeader(http.StatusFound)
+	json.NewEncoder(w).Encode(database)
 
 }
 
 func configureServer() {
-	configureRoutes()
 
-	log.Fatal(http.ListenAndServe(":3003", nil))
+	router := mux.NewRouter()
+	router.HandleFunc("/api/databases/{databaseID}/", searchDataBase).Methods("GET")
+	router.HandleFunc("/api/databases/", postDataBase).Methods("POST")
+	router.HandleFunc("/api/databases/", getDataBase).Methods("GET")
+	router.HandleFunc("/api/databases/{databaseID}/", putDataBase).Methods("PUT")
+	router.HandleFunc("/api/databases/{databaseID}/", deleteDataBase).Methods("DELETE")
+	fmt.Printf("Rota configurada")
+c := cors.New(cors.Options{
+	AllowedOrigins:   []string{"http://localhost:3000"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "Access-Control-Allow-Origin"},
+		ExposedHeaders:   []string{"Link", "Access-Control-Allow-Origin"},
+		AllowCredentials: true,
+		MaxAge:           300, // Maximum value not ignored by any of major browsers
+	})
+
+	handler := c.Handler(router)
+	log.Fatal(http.ListenAndServe(":3003", handler))
 }
 
 func main() {
+	databaseConnection()
 	configureServer()
 }
