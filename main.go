@@ -13,34 +13,33 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/rs/cors"
-
-	"github.com/lib/pq"
-	_ "github.com/lib/pq"
+	_ "github.com/go-sql-driver/mysql"
 )
 
 type Database struct {
-	ID     int      `json:"id,omitempty"`
-	Dbname string   `json:"dbname,omitempty"`
-	Images []string `json:"images,omitempty"`
+	ID     	  int    `json:"id,omitempty"`
+	FirstName string `json:"id,omitempty"`
+  	LastName  string `json:"id,omitempty"`
+  	Email 	  string `json:"id,omitempty"`
 }
 
 const (
-	host     = "localhost"
-	port     = 3001
-	user     = "docker"
-	password = "docker"
-	dbname   = "docker"
+	Frontport:= os.Getenv("FRONT_PORT")
+	host     := os.Getenv("HOST")
+	port     := os.Getenv("PORT")
+	user     := os.Getenv("USER")
+	password := os.Getenv("PASSWD")
 )
 
 var db *sql.DB
 
 func databaseConnection() {
-	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
+	mysqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
 		"password=%s dbname=%s sslmode=disable",
 		host, port, user, password, dbname)
 	var err error
 
-	db, err = sql.Open("postgres", psqlInfo)
+	db, err = sql.Open("mysql", mysqlInfo)
 
 	if err != nil {
 		panic(err)
@@ -56,12 +55,13 @@ func databaseConnection() {
 	_, errorOnCreate = db.Exec(
 		"CREATE TABLE DATABASES (" +
 			"ID serial PRIMARY KEY," +
-			"Dbname VARCHAR ( 50 ) UNIQUE NOT NULL," +
-			"images TEXT []" +
+			"FirstName  VARCHAR ( 50 ) UNIQUE NOT NULL," +
+			"LastName VARCHAR ( 50 ) UNIQUE NOT NULL," +
+			"Email VARCHAR ( 50 ) UNIQUE NOT NULL," +
 			");")
 
 	if errorOnCreate != nil {
-		_, errorOnGetRows := db.Query("SELECT ID, Dbname , images  FROM DATABASES")
+		_, errorOnGetRows := db.Query("SELECT ID, FirstName , LastName , Email FROM DATABASES")
 
 		if errorOnGetRows != nil {
 			panic(errorOnCreate)
@@ -72,10 +72,10 @@ func databaseConnection() {
 	fmt.Println("Successfully connected!")
 }
 
-func getDataBase(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+func getUser(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:" + Frontport)
 	fmt.Printf("Rota getAcessada")
-	registers, errorOnGetRows := db.Query("SELECT ID, Dbname , images  FROM DATABASES")
+	registers, errorOnGetRows := db.Query("SELECT ID, FirstName , LastName , Email FROM DATABASES")
 
 	if errorOnGetRows != nil {
 		panic(errorOnGetRows)
@@ -86,11 +86,7 @@ func getDataBase(w http.ResponseWriter, r *http.Request) {
 
 	for registers.Next() {
 		var database Database
-		scanErorr := registers.Scan(&database.ID, &database.Dbname, pq.Array(&database.Images))
-		if database.Images == nil {
-			databaseImages := []string{}
-			database.Images = databaseImages
-		}
+		scanErorr := registers.Scan(&database.ID, &database.FirstName,&database.LastName,&database.Email))
 		if scanErorr != nil {
 			panic(scanErorr)
 			continue
@@ -109,18 +105,18 @@ func getDataBase(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(databases)
 }
 
-func postDataBase(w http.ResponseWriter, r *http.Request) {
+func postUser(w http.ResponseWriter, r *http.Request) {
 	body, erro := ioutil.ReadAll(r.Body)
 
 	if erro != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	var newDataBase Database
+	var newUser Database
 
-	json.Unmarshal(body, &newDataBase)
-	fmt.Println(fmt.Printf("Array de images = %v", newDataBase.Images))
-	_, execError := db.Exec("INSERT INTO DATABASES (Dbname, images) VALUES ($1, $2);", newDataBase.Dbname, pq.Array(newDataBase.Images))
+	json.Unmarshal(body, &newUser)
+	fmt.Println(fmt.Printf("Array de LastName , Email = %v", newUser.Images))
+	_, execError := db.Exec("INSERT INTO DATABASES (FirstName, LastName , Email) VALUES (?, ?);", mdifiedDatabase.FirstName , mdifiedDatabase.LastName , mdifiedDatabase.Email , id)
 
 	if execError != nil {
 		panic(execError)
@@ -129,111 +125,103 @@ func postDataBase(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusCreated)
 
-	json.NewEncoder(w).Encode(newDataBase)
+	json.NewEncoder(w).Encode(newUser)
 }
 
-func deleteDataBase(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
-	id, _ := strconv.Atoi(vars["databaseID"])
-
-	registers := db.QueryRow("SELECT ID FROM DATABASES WHERE ID = $1", id)
-
-	var database Database
-
-	scanErorr := registers.Scan(&database.ID, &database.Dbname, pq.Array(&database.Images))
-
-	w.Header().Add("Content-Type","text/html")   
-	w.Header().Set("Content-Type", "application/json")
-	if scanErorr != nil {
-		panic(scanErorr)
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-
-	_, execError := db.Exec("DELETE FROM DATABASES WHERE ID = $1", database.Images, id)
-
-	if execError != nil {
-		panic(execError)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
-
-}
-
-func putDataBase(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
-	id, _ := strconv.Atoi(vars["databaseID"])
-
-	registers := db.QueryRow("SELECT ID, Dbname , images  FROM DATABASES WHERE ID = $1", id)
-
-	var database Database
-
-	scanErorr := registers.Scan(&database.ID, &database.Dbname, pq.Array(&database.Images))
-
-	w.Header().Add("Content-Type","text/html")
-	w.Header().Set("Content-Type", "application/json")
-	if scanErorr != nil {
-		panic(scanErorr)
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-
-	body, _ := ioutil.ReadAll(r.Body)
-	var mdifiedDatabase Database
-
-	json.Unmarshal(body, &mdifiedDatabase)
-
-	_, execError := db.Exec("UPDATE DATABASES SET Dbname = $1, images = $2 WHERE ID = $3", mdifiedDatabase.Dbname, pq.Array(mdifiedDatabase.Images), id)
-	if execError != nil {
-		panic(execError)
-		w.WriteHeader(http.StatusInternalServerError)
-	}
-
-	json.NewEncoder(w).Encode(mdifiedDatabase)
-
-}
-
-func searchDataBase(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
-	vars := mux.Vars(r)
-	id, _ := strconv.Atoi(vars["databaseID"])
-
-	registers := db.QueryRow("SELECT ID, Dbname , images  FROM DATABASES WHERE ID = $1", id)
-
-	var database Database
-
-	scanErorr := registers.Scan(&database.ID, &database.Dbname, pq.Array(&database.Images))
-
-	                                         
-	 w.Header().Add("Content-Type","text/html")
-	w.Header().Set("Content-Type", "application/json")
-	
-	if scanErorr != nil {
-		panic(scanErorr)
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-
-	w.WriteHeader(http.StatusFound)
-	json.NewEncoder(w).Encode(database)
-
-}
-
+//func deleteUser(w http.ResponseWriter, r *http.Request) {
+//	vars := mux.Vars(r)
+//	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:" + Frontport)
+//	id, _ := strconv.Atoi(vars["databaseID"])
+//
+//	registers := db.QueryRow("SELECT ID FROM DATABASES WHERE ID = ?", id)
+//
+//	var database Database
+//
+//
+//	scanErorr := registers.Scan(&database.ID, &database.FirstName,&database.LastName,&database.Email))
+//	w.Header().Add("Content-Type","text/html")   
+//	w.Header().Set("Content-Type", "application/json")
+//	if scanErorr != nil {
+//		panic(scanErorr)
+//		w.WriteHeader(http.StatusNoContent)
+//		return
+//	}
+//
+//	w.WriteHeader(http.StatusNoContent)
+//
+//}
+//
+////func putUser(w http.ResponseWriter, r *http.Request) {
+//	vars := mux.Vars(r)
+//	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:" + Frontport)
+//	id, _ := strconv.Atoi(vars["databaseID"])
+//
+//	registers := db.QueryRow("SELECT ID, FirstName , LastName , Email  FROM DATABASES WHERE ID = ?", id)
+//
+//	var database Database
+//
+//
+//	scanErorr := registers.Scan(&database.ID, &database.FirstName,&database.LastName,&database.Email))
+//	w.Header().Add("Content-Type","text/html")
+//	w.Header().Set("Content-Type", "application/json")
+//	if scanErorr != nil {
+//		panic(scanErorr)
+//		w.WriteHeader(http.StatusNoContent)
+//		return
+//	}
+//
+//	body, _ := ioutil.ReadAll(r.Body)
+//	var mdifiedDatabase Database
+//
+//	json.Unmarshal(body, &mdifiedDatabase)
+//
+//	_, execError := db.Exec("UPDATE DATABASES SET FirstName = ?, LastName , Email = ? WHERE ID = ?", mdifiedDatabase.FirstName , mdifiedDatabase.LastName , mdifiedDatabase.Email , id)
+//	if execError != nil {
+//		panic(execError)
+//		w.WriteHeader(http.StatusInternalServerError)
+//	}
+//
+//	json.NewEncoder(w).Encode(mdifiedDatabase)
+//
+//}
+//
+////func searchUser(w http.ResponseWriter, r *http.Request) {
+//	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:" + Frontport)
+//	vars := mux.Vars(r)
+//	id, _ := strconv.Atoi()
+//
+//	registers := db.QueryRow("SELECT ID, FirstName , LastName , Email  FROM DATABASES WHERE ID = ?", id)
+//
+//	var database Database
+//
+//	scanErorr := registers.Scan(&database.ID, &database.FirstName, &database.LastName)
+//
+//	                                         
+//	 w.Header().Add("Content-Type","text/html")
+//	w.Header().Set("Content-Type", "application/json")
+//	
+//	if scanErorr != nil {
+//		panic(scanErorr)
+//		w.WriteHeader(http.StatusNoContent)
+//		return
+//	}
+//
+//	w.WriteHeader(http.StatusFound)
+//	json.NewEncoder(w).Encode(database)
+//
+//}
+//
 func configureServer() {
 
 	router := mux.NewRouter()
-	router.HandleFunc("/api/databases/{databaseID}/", searchDataBase).Methods("GET")
-	router.HandleFunc("/api/databases/", postDataBase).Methods("POST")
-	router.HandleFunc("/api/databases/", getDataBase).Methods("GET")
-	router.HandleFunc("/api/databases/{databaseID}/", putDataBase).Methods("PUT")
-	router.HandleFunc("/api/databases/{databaseID}/", deleteDataBase).Methods("DELETE")
+	router.HandleFunc("/api/databases/", postUser).Methods("POST")
+	router.HandleFunc("/api/databases/", getUser).Methods("GET")
+	//router.HandleFunc("/api/databases/{databaseID}/", searchUser).Methods("GET")
+	//router.HandleFunc("/api/databases/{databaseID}/", putUser).Methods("PUT")
+	//router.HandleFunc("/api/databases/{databaseID}/", deleteUser).Methods("DELETE")
 	fmt.Printf("Rota configurada")
 c := cors.New(cors.Options{
-	AllowedOrigins:   []string{"http://localhost:3000"},
+	AllowedOrigins:   []string{"http://localhost:" + Frontport},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "Access-Control-Allow-Origin"},
 		ExposedHeaders:   []string{"Link", "Access-Control-Allow-Origin"},
@@ -242,7 +230,7 @@ c := cors.New(cors.Options{
 	})
 
 	handler := c.Handler(router)
-	log.Fatal(http.ListenAndServe(":3003", handler))
+	log.Fatal(http.ListenAndServe(":3080", handler))
 }
 
 func main() {
