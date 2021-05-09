@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 
 	"database/sql"
 	"fmt"
@@ -17,51 +18,54 @@ import (
 
 type Database struct {
 	ID     	  int    `json:"id,omitempty"`
-	FirstName string `json:"id,omitempty"`
-  	LastName  string `json:"id,omitempty"`
-  	Email 	  string `json:"id,omitempty"`
+	FirstName string `json:"firstname,omstempty"`
+  	LastName  string `json:"lastname,omitempty"`
+  	Email 	  string `json:"email,omitempty"`
 }
 
-const (
-	Frontport = os.Getenv("FRONT_PORT")
-	host      = os.Getenv("HOST")
-	port      = os.Getenv("MYSQL_PORT")
-	user      = os.Getenv("MYSQL_USER")
-	password  = os.Getenv("MYSQL_PASSWORD")
-	dbname  = os.Getenv("MYSQL_DATABASE")
+var (
+	Frontport  = os.Getenv("FRONT_PORT")
+	host       = os.Getenv("HOST")
+	port       = os.Getenv("MYSQL_PORT")
+	user       = os.Getenv("MYSQL_USER")
+	password   = os.Getenv("MYSQL_PASSWORD")
+	dbname     = os.Getenv("MYSQL_DATABASE")
 )
 
 var db *sql.DB
 
 func databaseConnection() {
-	mysqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
-		"password=%s dbname=%s sslmode=disable",
-		host, port, user, password, dbname)
-	var err error
+	db, err := sql.Open("mysql", user +":" + password + "@tcp(" + host + ":" + port + ")/" + dbname )
 
-	db, err = sql.Open("mysql", mysqlInfo)
-
+	    // if there is an error opening the connection, handle it
 	if err != nil {
-		panic(err)
-	}
-
+		panic(err.Error())
+    	}
 	err = db.Ping()
 	if err != nil {
 		panic(err)
 		return
 	}
+	//query :="CREATE TABLE IF NOT EXISTS databases"+
+	//"(" +
+	//"id INT AUTO_INCRMENT, " +
+	//"firstname VARCHAR(255), " +
+	//"lastname VARCHAR(255), " +
+	//"email VARCHAR(255) " +
+	//");"
+	query := "CREATE TABLE IF NOT EXISTS users (" +
+	"id INT AUTO_INCREMENT PRIMARY KEY," +
+	"FirstName VARCHAR(255) NOT NULL," +
+	"LastName VARCHAR(255) NOT NULL," +
+	"Email VARCHAR(255) NOT NULL" +
+	")  ENGINE=INNODB;" 
 	var errorOnCreate error
+	//query := `create table if not exists databases(id int primary key auto_increment, firstname text not null, lastname text not null, email text unique not null);`
+	_, errorOnCreate = db.Exec(query)
 
-	_, errorOnCreate = db.Exec(
-		"CREATE TABLE DATABASES (" +
-			"ID serial PRIMARY KEY," +
-			"FirstName  VARCHAR ( 50 ) UNIQUE NOT NULL," +
-			"LastName VARCHAR ( 50 ) UNIQUE NOT NULL," +
-			"Email VARCHAR ( 50 ) UNIQUE NOT NULL," +
-			");")
-
+	fmt.Println("Successfully created!")
 	if errorOnCreate != nil {
-		_, errorOnGetRows := db.Query("SELECT ID, FirstName , LastName , Email FROM DATABASES")
+		_, errorOnGetRows := db.Query("select id, FirstName , LastName , Email from users")
 
 		if errorOnGetRows != nil {
 			panic(errorOnCreate)
@@ -73,9 +77,9 @@ func databaseConnection() {
 }
 
 func getUser(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:" + Frontport)
+	w.Header().Set("Access-Control-Allow-Origin", "http://" + host + ":" + Frontport)
 	fmt.Printf("Rota getAcessada")
-	registers, errorOnGetRows := db.Query("SELECT ID, FirstName , LastName , Email FROM DATABASES")
+	registers, errorOnGetRows := db.Query("select id, FirstName , LastName , Email from users")
 
 	if errorOnGetRows != nil {
 		panic(errorOnGetRows)
@@ -115,7 +119,7 @@ func postUser(w http.ResponseWriter, r *http.Request) {
 	var newUser Database
 
 	json.Unmarshal(body, &newUser)
-	_, execError := db.Exec("INSERT INTO DATABASES (FirstName, LastName , Email) VALUES (?, ?, ?);", newUser.FirstName , newUser.LastName , newUser.Email)
+	_, execError := db.Exec("insert into users (FirstName, LastName , Email) values (?, ?, ?);", newUser.FirstName , newUser.LastName , newUser.Email)
 
 	if execError != nil {
 		panic(execError)
@@ -213,8 +217,8 @@ func postUser(w http.ResponseWriter, r *http.Request) {
 func configureServer() {
 
 	router := mux.NewRouter()
-	router.HandleFunc("/api/databases/", postUser).Methods("POST")
-	router.HandleFunc("/api/databases/", getUser).Methods("GET")
+	router.HandleFunc("/api/users/", postUser).Methods("POST")
+	router.HandleFunc("/api/users/", getUser).Methods("GET")
 	//router.HandleFunc("/api/databases/{databaseID}/", searchUser).Methods("GET")
 	//router.HandleFunc("/api/databases/{databaseID}/", putUser).Methods("PUT")
 	//router.HandleFunc("/api/databases/{databaseID}/", deleteUser).Methods("DELETE")
