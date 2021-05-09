@@ -17,10 +17,10 @@ import (
 )
 
 type Database struct {
-	ID     	  int    `json:"id,omitempty"`
-	FirstName string `json:"firstname,omstempty"`
-  	LastName  string `json:"lastname,omitempty"`
-  	Email 	  string `json:"email,omitempty"`
+	ID     	  int    `json:"id"`
+	FirstName string `json:"firstname"`
+  	LastName  string `json:"lastname"`
+  	Email 	  string `json:"email"`
 }
 
 var (
