@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"strconv"
 
 	"database/sql"
 	"fmt"
@@ -24,11 +23,12 @@ type Database struct {
 }
 
 const (
-	Frontport:= os.Getenv("FRONT_PORT")
-	host     := os.Getenv("HOST")
-	port     := os.Getenv("PORT")
-	user     := os.Getenv("USER")
-	password := os.Getenv("PASSWD")
+	Frontport = os.Getenv("FRONT_PORT")
+	host      = os.Getenv("HOST")
+	port      = os.Getenv("MYSQL_PORT")
+	user      = os.Getenv("MYSQL_USER")
+	password  = os.Getenv("MYSQL_PASSWORD")
+	dbname  = os.Getenv("MYSQL_DATABASE")
 )
 
 var db *sql.DB
@@ -86,7 +86,7 @@ func getUser(w http.ResponseWriter, r *http.Request) {
 
 	for registers.Next() {
 		var database Database
-		scanErorr := registers.Scan(&database.ID, &database.FirstName,&database.LastName,&database.Email))
+		scanErorr := registers.Scan(&database.ID, &database.FirstName,&database.LastName,&database.Email)
 		if scanErorr != nil {
 			panic(scanErorr)
 			continue
@@ -115,8 +115,7 @@ func postUser(w http.ResponseWriter, r *http.Request) {
 	var newUser Database
 
 	json.Unmarshal(body, &newUser)
-	fmt.Println(fmt.Printf("Array de LastName , Email = %v", newUser.Images))
-	_, execError := db.Exec("INSERT INTO DATABASES (FirstName, LastName , Email) VALUES (?, ?);", mdifiedDatabase.FirstName , mdifiedDatabase.LastName , mdifiedDatabase.Email , id)
+	_, execError := db.Exec("INSERT INTO DATABASES (FirstName, LastName , Email) VALUES (?, ?, ?);", newUser.FirstName , newUser.LastName , newUser.Email)
 
 	if execError != nil {
 		panic(execError)
